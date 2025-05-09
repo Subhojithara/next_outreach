@@ -2,8 +2,10 @@
 
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import { initS3Client, parseS3BucketConfig } from '@/lib/aws-service';
+import { handleAWSError } from '@/middleware/aws-error-handler';
 
 // Helper to convert a Readable stream to string
 async function streamToString(stream: Readable): Promise<string> {
@@ -22,27 +24,14 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    const s3Client = new S3Client({
-      region: process.env.AWS_REGION || 'ap-south-1',
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
-    });
-
-    // Extract just the bucket name from the S3_BUCKET_NAME environment variable
-    // Format could be either 's3://bucketname/path/' or just 'bucketname'
-    const s3BucketNameFull = process.env.S3_BUCKET_NAME!.replace('s3://', '');
-    const s3BucketName = s3BucketNameFull.split('/')[0];
-
-    // Determine the prefix - if the env var had a path, use it as part of the prefix
-    let prefix = '';
-    if (s3BucketNameFull.includes('/')) {
-      const basePrefix = s3BucketNameFull.substring(s3BucketName.length + 1);
-      prefix = `${basePrefix}user-data/${userId}/bulk-find-email/`;
-    } else {
-      prefix = `user-data/${userId}/bulk-find-email/`;
-    }
+    // Initialize S3 client with error handling
+    const s3Client = initS3Client();
+    
+    // Parse S3 bucket configuration
+    const { bucketName: s3BucketName, prefix } = parseS3BucketConfig(userId, 'bulk');
+    
+    // Log configuration for debugging
+    console.log(`Listing bulk results for user ${userId} from bucket ${s3BucketName} with prefix ${prefix}`);
 
     const listObjectsParams = {
       Bucket: s3BucketName,
@@ -107,7 +96,20 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ results: resultsMetadata });
 
   } catch (error) {
-    console.error('Error listing bulk results from S3:', error);
-    return NextResponse.json({ error: 'Failed to retrieve bulk search history.' }, { status: 500 });
+    // Use the error handler to get detailed error information
+    const handledError = handleAWSError(error, 'S3');
+    
+    console.error('Error listing bulk results from S3:', handledError);
+    
+    // Return a more informative error message
+    return NextResponse.json(
+      { 
+        error: 'Failed to retrieve bulk search history.', 
+        details: handledError.message,
+        errorType: handledError.type,
+        timestamp: handledError.timestamp
+      },
+      { status: 500 }
+    );
   }
 }

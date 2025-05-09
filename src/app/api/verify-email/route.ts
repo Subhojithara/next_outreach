@@ -2,7 +2,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { SESClient, VerifyEmailAddressCommand } from '@aws-sdk/client-ses';
+import { VerifyEmailAddressCommand } from '@aws-sdk/client-ses';
+import { initSESClient } from '@/lib/aws-service';
+import { handleAWSError } from '@/middleware/aws-error-handler';
 
 // Helper function to validate email format
 function isValidEmail(email: string): boolean {
@@ -46,14 +48,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    // Initialize SES client for email verification
-    const sesClient = new SESClient({
-      region: process.env.AWS_REGION || 'ap-south-1',
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
-    });
+    // Initialize SES client with error handling
+    const sesClient = initSESClient();
+    
+    // Log for debugging
+    console.log(`Verifying email ${email} for user ${userId}`);
 
     // Verify email with SES
     const isVerified = await verifyEmailWithSES(email, sesClient);
@@ -76,9 +75,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       verifiedAt: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Error verifying email:', error);
+    // Use the error handler to get detailed error information
+    const handledError = handleAWSError(error, 'SES');
+    
+    console.error('Error verifying email:', handledError);
+    
+    // Return a more informative error message
     return NextResponse.json(
-      { error: 'An error occurred while verifying the email' },
+      { 
+        error: 'An error occurred while verifying the email', 
+        details: handledError.message,
+        errorType: handledError.type,
+        timestamp: handledError.timestamp
+      },
       { status: 500 }
     );
   }
