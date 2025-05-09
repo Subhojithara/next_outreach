@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Search, ChevronRight, CheckCircle, Star, Shield, Users, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Nav } from "@/components/navigation/nav";
+import Nav from "@/components/navigation/nav";
 import Link from "next/link";
 
 const Page = () => {
