@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import EmailTabs from '@/components/email/EmailTabs';
+import { EmailTabs } from '@/components/email/EmailTabs';
 
-const EmailHistoryPage = () => {
-  return <EmailTabs defaultTab="history" />;
-};
+const Page = () => {
+  return <EmailTabs />;
+}
 
-export default EmailHistoryPage;
+export default Page;

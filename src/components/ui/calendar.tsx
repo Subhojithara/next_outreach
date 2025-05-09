@@ -7,12 +7,16 @@ import { DayPicker } from "react-day-picker"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
+// Custom navigation button component for DayPicker
+
+type CalendarProps = React.ComponentProps<typeof DayPicker>
+
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
   ...props
-}: React.ComponentProps<typeof DayPicker>) {
+}: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -60,12 +64,26 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("size-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("size-4", className)} {...props} />
-        ),
+        // Use 'Button' instead of 'NavButton' to customize navigation icons.
+        Button: (buttonProps) => {
+          // Type for buttonProps is React.ButtonHTMLAttributes<HTMLButtonElement> & { children?: React.ReactNode }
+          const { children, ...navProps } = buttonProps;
+          const label = (navProps["aria-label"] as string | undefined) ?? "";
+          let icon = children;
+          if (label.toLowerCase().includes("previous")) {
+            icon = <ChevronLeft className={cn("size-4", navProps.className)} />;
+          } else if (label.toLowerCase().includes("next")) {
+            icon = <ChevronRight className={cn("size-4", navProps.className)} />;
+          }
+          return (
+            <button
+              type="button"
+              {...navProps}
+            >
+              {icon}
+            </button>
+          );
+        },
       }}
       {...props}
     />

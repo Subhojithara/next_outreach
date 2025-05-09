@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import EmailTabs from '@/components/email/EmailTabs';
+import { EmailTabs } from '@/components/email/EmailTabs';
 
 const Page = () => {
-  return <EmailTabs defaultTab="bulk" />;
+  return <EmailTabs />;
 }
 
 export default Page
