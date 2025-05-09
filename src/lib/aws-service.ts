@@ -49,7 +49,7 @@ export function initS3Client(options?: AWSServiceOptions): S3Client {
       credentials,
     });
   } catch (error) {
-    const handledError = handleAWSError(error, 'S3');
+    const handledError = handleAWSError(error as Error, 'S3');
     console.error('Failed to initialize S3 client:', handledError.message);
     // Return a client anyway, but operations will likely fail
     return new S3Client({
@@ -78,7 +78,7 @@ export function initSESClient(options?: AWSServiceOptions): SESClient {
       credentials,
     });
   } catch (error) {
-    const handledError = handleAWSError(error, 'SES');
+    const handledError = handleAWSError(error as Error, 'SES');
     console.error('Failed to initialize SES client:', handledError.message);
     return new SESClient({
       region: process.env.AWS_REGION || 'ap-south-1',
@@ -106,7 +106,7 @@ export function initAthenaClient(options?: AWSServiceOptions): AthenaClient {
       credentials,
     });
   } catch (error) {
-    const handledError = handleAWSError(error, 'Athena');
+    const handledError = handleAWSError(error as Error, 'Athena');
     console.error('Failed to initialize Athena client:', handledError.message);
     return new AthenaClient({
       region: process.env.AWS_REGION || 'ap-south-1',
@@ -134,7 +134,7 @@ export function initDynamoDBClient(options?: AWSServiceOptions): DynamoDBClient 
       credentials,
     });
   } catch (error) {
-    const handledError = handleAWSError(error, 'DynamoDB');
+    const handledError = handleAWSError(error as Error, 'DynamoDB');
     console.error('Failed to initialize DynamoDB client:', handledError.message);
     return new DynamoDBClient({
       region: process.env.AWS_REGION || 'ap-south-1',

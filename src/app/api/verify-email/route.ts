@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { VerifyEmailAddressCommand } from '@aws-sdk/client-ses';
+import { VerifyEmailAddressCommand, SESClient } from '@aws-sdk/client-ses';
 import { initSESClient } from '@/lib/aws-service';
 import { handleAWSError } from '@/middleware/aws-error-handler';
 
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     // Use the error handler to get detailed error information
-    const handledError = handleAWSError(error, 'SES');
+    const handledError = handleAWSError(error as Error, 'SES');
     
     console.error('Error verifying email:', handledError);
     

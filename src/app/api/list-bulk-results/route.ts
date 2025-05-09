@@ -97,7 +97,7 @@ export async function GET(): Promise<NextResponse> {
 
   } catch (error) {
     // Use the error handler to get detailed error information
-    const handledError = handleAWSError(error, 'S3');
+    const handledError = handleAWSError(error as Error, 'S3');
     
     console.error('Error listing bulk results from S3:', handledError);
     

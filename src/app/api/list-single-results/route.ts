@@ -99,7 +99,7 @@ export async function GET() {
     return NextResponse.json({ results: resultsMetadata });
   } catch (error) {
     // Use the error handler to get detailed error information
-    const handledError = handleAWSError(error, 'S3');
+    const handledError = handleAWSError(error as Error, 'S3');
     
     console.error('Error listing single email results:', handledError);
     

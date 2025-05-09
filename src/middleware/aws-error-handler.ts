@@ -26,7 +26,7 @@ export interface AWSErrorResponse {
   type: AWSErrorType;
   message: string;
   service: string;
-  originalError?: any;
+  originalError?: Error;
   timestamp: string;
 }
 
@@ -79,7 +79,7 @@ export function createAWSClients(region: string, credentials: { accessKeyId: str
  * @param error The error from AWS service
  * @param service The AWS service name
  */
-export function handleAWSError(error: any, service: string): AWSErrorResponse {
+export function handleAWSError(error: Error, service: string): AWSErrorResponse {
   console.error(`AWS ${service} Error:`, error);
   
   let type = AWSErrorType.UNKNOWN;
