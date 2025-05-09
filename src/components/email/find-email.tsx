@@ -9,8 +9,9 @@ import { useForm } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Mail, User, Briefcase, Linkedin } from 'lucide-react';
+import { Loader2, Mail, User, Briefcase, Linkedin, CheckSquare } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function HomePage() {
   const [email, setEmail] = useState('');
@@ -19,12 +20,27 @@ export default function HomePage() {
   const [, setSuccess] = useState(false);
 
   // Define form schema with Zod
-  const formSchema = z.object({
-    firstName: z.string().min(1, { message: 'First name is required' }),
-    lastName: z.string().min(1, { message: 'Last name is required' }),
-    linkedin: z.string()
-      .min(1, { message: 'LinkedIn username is required' }),
-    companyName: z.string().min(1, { message: 'Company name is required' }),
+    const formSchema = z.object({
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      linkedin: z.string().optional(),
+      companyName: z.string().optional(),
+      // Search criteria options
+      useFirstName: z.boolean(),
+      useLastName: z.boolean(),
+      useLinkedin: z.boolean(),
+      useCompanyName: z.boolean(),
+    }).refine(data => {
+    // Ensure at least one search criteria is selected and has a value
+    return (
+      (data.useFirstName && data.firstName) ||
+      (data.useLastName && data.lastName) ||
+      (data.useLinkedin && data.linkedin) ||
+      (data.useCompanyName && data.companyName)
+    );
+  }, {
+    message: "Please select at least one search criteria and provide its value",
+    path: ["useFirstName"], // This will show the error on the first checkbox
   });
 
   // Define types
@@ -44,6 +60,10 @@ export default function HomePage() {
       lastName: '',
       linkedin: '',
       companyName: '',
+      useFirstName: true,
+      useLastName: true,
+      useLinkedin: true,
+      useCompanyName: true,
     },
   });
 
@@ -56,11 +76,24 @@ export default function HomePage() {
     setPersonalEmails([]);
     setSuccess(false);
 
+    // Filter out fields that are not selected by the user
+    const searchParams = {
+      ...(values.useFirstName && values.firstName ? { firstName: values.firstName } : {}),
+      ...(values.useLastName && values.lastName ? { lastName: values.lastName } : {}),
+      ...(values.useLinkedin && values.linkedin ? { linkedin: values.linkedin } : {}),
+      ...(values.useCompanyName && values.companyName ? { companyName: values.companyName } : {}),
+      // Include the search criteria flags
+      useFirstName: values.useFirstName,
+      useLastName: values.useLastName,
+      useLinkedin: values.useLinkedin,
+      useCompanyName: values.useCompanyName
+    };
+
     try {
       const response = await fetch('/api/find-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(searchParams),
       });
       const data: ApiResponse = await response.json();
 
@@ -145,6 +178,84 @@ export default function HomePage() {
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <motion.div variants={itemVariants} className="mb-4">
+                  <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <CheckSquare className="h-4 w-4" />
+                    <span>Search Criteria Options</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 p-3 border rounded-md bg-muted/20">
+                    <FormField
+                      control={form.control}
+                      name="useFirstName"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none">
+                            <FormLabel>Use First Name</FormLabel>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="useLastName"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none">
+                            <FormLabel>Use Last Name</FormLabel>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="useLinkedin"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none">
+                            <FormLabel>Use LinkedIn</FormLabel>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="useCompanyName"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none">
+                            <FormLabel>Use Company Name</FormLabel>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormMessage className="mt-2" />
+                </motion.div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <motion.div variants={itemVariants}>
                     <FormField
@@ -161,6 +272,7 @@ export default function HomePage() {
                               placeholder="John" 
                               {...field} 
                               className="focus-visible:ring-primary/20" 
+                              disabled={!form.watch('useFirstName')}
                             />
                           </FormControl>
                           <FormMessage />
@@ -184,6 +296,7 @@ export default function HomePage() {
                               placeholder="Doe" 
                               {...field} 
                               className="focus-visible:ring-primary/20" 
+                              disabled={!form.watch('useLastName')}
                             />
                           </FormControl>
                           <FormMessage />
@@ -208,6 +321,7 @@ export default function HomePage() {
                             placeholder="https://linkedin.com/in/johndoe" 
                             {...field} 
                             className="focus-visible:ring-primary/20" 
+                            disabled={!form.watch('useLinkedin')}
                           />
                         </FormControl>
                         <div className="text-xs text-muted-foreground mt-1">
@@ -234,6 +348,7 @@ export default function HomePage() {
                             placeholder="Acme Inc" 
                             {...field} 
                             className="focus-visible:ring-primary/20" 
+                            disabled={!form.watch('useCompanyName')}
                           />
                         </FormControl>
                         <FormMessage />

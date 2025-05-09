@@ -32,38 +32,62 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   console.log('--- userId found:', userId, 'Proceeding with request ---'); // Added log
 
   try {
-    const { firstName, lastName, linkedin, companyName } = await request.json();
+    const { 
+      firstName, lastName, linkedin, companyName,
+      useFirstName, useLastName, useLinkedin, useCompanyName 
+    } = await request.json();
     
     // Helper function to extract LinkedIn username from URL
     const extractLinkedInUsername = (url: string): string => {
       // Try to extract username from various LinkedIn URL formats
-      const match = url.match(/linkedin\.com\/in\/([\w-]+)/i);
-      return match ? match[1] : url;
+      const match = url?.match(/linkedin\.com\/in\/([\w-]+)/i);
+      return match ? match[1] : url || '';
     };
 
-    if (!firstName || !lastName || !linkedin || !companyName) {
+    // Validate that at least one search parameter is provided
+    if ((!useFirstName || !firstName) && 
+        (!useLastName || !lastName) && 
+        (!useLinkedin || !linkedin) && 
+        (!useCompanyName || !companyName)) {
       return NextResponse.json(
-        { error: 'Missing required parameters.' },
+        { error: 'At least one search parameter is required.' },
         { status: 400 }
       );
     }
 
-    // Build the SQL query.
+    // Build the SQL query based on selected search criteria
     // NOTE: In production, sanitize inputs to prevent SQL injection.
-    // Extract LinkedIn username for better matching
-    const linkedinUsername = extractLinkedInUsername(linkedin);
+    const linkedinUsername = useLinkedin && linkedin ? extractLinkedInUsername(linkedin) : '';
     
-    // First try with all criteria
+    // Build WHERE clause based on selected criteria
+    const whereConditions = [];
+    
+    if (useFirstName && firstName) {
+      whereConditions.push(`(FIRST_NAME = '${firstName}' OR FIRST_NAME LIKE '${firstName}%')`);
+    }
+    
+    if (useLastName && lastName) {
+      whereConditions.push(`(LAST_NAME = '${lastName}' OR LAST_NAME LIKE '${lastName}%')`);
+    }
+    
+    if (useLinkedin && linkedin) {
+      whereConditions.push(`(LINKEDIN_URL = '${linkedin}' 
+             OR LINKEDIN_URL LIKE '%${linkedin}%' 
+             OR LINKEDIN_URL LIKE '%${linkedinUsername}%')`);
+    }
+    
+    if (useCompanyName && companyName) {
+      whereConditions.push(`COMPANY_NAME LIKE '%${companyName}%'`);
+    }
+    
+    // Combine all conditions with AND
+    const whereClause = whereConditions.join(' AND ');
+    
+    // First try with selected criteria
     const query = `
       SELECT BUSINESS_EMAIL, PERSONAL_EMAILS
       FROM my_table
-      WHERE
-        (FIRST_NAME = '${firstName}' OR FIRST_NAME LIKE '${firstName}%')
-        AND (LAST_NAME = '${lastName}' OR LAST_NAME LIKE '${lastName}%')
-        AND (LINKEDIN_URL = '${linkedin}' 
-             OR LINKEDIN_URL LIKE '%${linkedin}%' 
-             OR LINKEDIN_URL LIKE '%${linkedinUsername}%')
-        AND COMPANY_NAME LIKE '%${companyName}%'
+      WHERE ${whereClause}
       LIMIT 1
     `;
     
@@ -105,17 +129,45 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
       }
       
-      // If no results, try with just name and company
+      // If no results, try with a more relaxed fallback query based on selected criteria
       console.log('No results with full criteria, trying fallback query...');
+      
+      // Build a more relaxed fallback query based on selected criteria
+      const fallbackConditions = [];
+      
+      // Only include criteria that were selected by the user
+      if (useFirstName && firstName) {
+        fallbackConditions.push(`(FIRST_NAME = '${firstName}' OR FIRST_NAME LIKE '${firstName}%')`);
+      }
+      
+      if (useLastName && lastName) {
+        fallbackConditions.push(`(LAST_NAME = '${lastName}' OR LAST_NAME LIKE '${lastName}%')`);
+      }
+      
+      // For fallback, we prioritize name and company if available
+      if (useCompanyName && companyName) {
+        fallbackConditions.push(`COMPANY_NAME LIKE '%${companyName}%'`);
+      }
+      
+      // Only include LinkedIn as a last resort in fallback
+      if (fallbackConditions.length === 0 && useLinkedin && linkedin) {
+        fallbackConditions.push(`(LINKEDIN_URL LIKE '%${linkedin}%')`);
+      }
+      
+      // If we still have no conditions, return an error
+      if (fallbackConditions.length === 0) {
+        return { email: null, personalEmails: null, errorMessage: 'No valid search criteria provided.' };
+      }
+      
+      const fallbackWhereClause = fallbackConditions.join(' AND ');
+      
       const fallbackQuery = `
         SELECT BUSINESS_EMAIL, PERSONAL_EMAILS
         FROM my_table
-        WHERE
-          (FIRST_NAME = '${firstName}' OR FIRST_NAME LIKE '${firstName}%')
-          AND (LAST_NAME = '${lastName}' OR LAST_NAME LIKE '${lastName}%')
-          AND COMPANY_NAME LIKE '%${companyName}%'
+        WHERE ${fallbackWhereClause}
         LIMIT 1
       `;
+      
       
       const fallbackQueryResponse = await athenaClient.send(
         new StartQueryExecutionCommand({
@@ -153,14 +205,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       
       const fallbackRows = fallbackResults.ResultSet?.Rows;
       if (!fallbackRows || fallbackRows.length < 2) {
+        // Build a message showing which criteria were used in the search
+        const searchCriteriaUsed = [];
+        if (useFirstName && firstName) searchCriteriaUsed.push(`- First Name: ${firstName}`);
+        if (useLastName && lastName) searchCriteriaUsed.push(`- Last Name: ${lastName}`);
+        if (useCompanyName && companyName) searchCriteriaUsed.push(`- Company: ${companyName}`);
+        if (useLinkedin && linkedin) searchCriteriaUsed.push(`- LinkedIn: ${linkedin}`);
+        
         return { 
           email: null,
           personalEmails: null,
           errorMessage: 'No matching email found. We searched for records matching the following criteria:\n' +
-                      `- Name: ${firstName} ${lastName}\n` +
-                      `- Company: ${companyName}\n` +
-                      `- LinkedIn: ${linkedin}\n` +
-                      'Please verify your information and try again with different variations.'
+                      `${searchCriteriaUsed.join('\n')}\n` +
+                      'Please verify your information and try again with different variations or try using different search criteria.'
         };
       }
       
@@ -221,8 +278,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       prefix = `user-data/${userId}/find-email/`;
     }
     
-    const searchId = `${firstName}-${lastName}-${companyName}`;
-    const s3Key = `${prefix}${searchId}.json`; // Unique key per user and query
+    // Generate a search ID based on the criteria that were used
+    const searchIdParts = [];
+    if (useFirstName && firstName) searchIdParts.push(firstName);
+    if (useLastName && lastName) searchIdParts.push(lastName);
+    if (useCompanyName && companyName) searchIdParts.push(companyName);
+    if (useLinkedin && linkedin) {
+      const linkedinPart = extractLinkedInUsername(linkedin);
+      if (linkedinPart) searchIdParts.push(linkedinPart);
+    }
+    
+    const searchId = searchIdParts.join('-') || 'search';
+    // Add a timestamp to ensure uniqueness when criteria might be sparse
+    const timestamp = new Date().getTime();
+    const uniqueSearchId = `${searchId}-${timestamp}`;
+    const s3Key = `${prefix}${uniqueSearchId}.json`; // Unique key per user and query
 
     // Optional: Check if data already exists in S3 for this user/query
     try {
@@ -295,10 +365,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Prepare the result data with additional metadata
     const resultData: {
-      firstName: string;
-      lastName: string;
-      linkedin: string;
-      companyName: string;
+      firstName?: string;
+      lastName?: string;
+      linkedin?: string;
+      companyName?: string;
+      useFirstName: boolean;
+      useLastName: boolean;
+      useLinkedin: boolean;
+      useCompanyName: boolean;
       timestamp: string;
       searchId: string;
       userId: string;
@@ -306,12 +380,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       personalEmails?: string[];
       error?: string;
     } = { 
-      firstName,
-      lastName,
-      linkedin,
-      companyName,
+      // Only include fields that were used in the search
+      ...(useFirstName && firstName ? { firstName } : {}),
+      ...(useLastName && lastName ? { lastName } : {}),
+      ...(useLinkedin && linkedin ? { linkedin } : {}),
+      ...(useCompanyName && companyName ? { companyName } : {}),
+      // Include search criteria flags
+      useFirstName: !!useFirstName,
+      useLastName: !!useLastName,
+      useLinkedin: !!useLinkedin,
+      useCompanyName: !!useCompanyName,
       timestamp: new Date().toISOString(),
-      searchId: `${firstName}-${lastName}-${companyName}`,
+      searchId: uniqueSearchId,
       userId
     };
     
@@ -355,26 +435,57 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.error('Error parsing request data:', parseError);
     }
     
-    const { firstName = '', lastName = '', linkedin = '', companyName = '' } = requestData;
+    // const { firstName = '', lastName = '', linkedin = '', companyName = '' } = requestData;
     
     // Save the error to S3 for tracking purposes
     try {
+      // Extract search parameters from request data
+      const { 
+        firstName = '', lastName = '', linkedin = '', companyName = '',
+        useFirstName = false, useLastName = false, useLinkedin = false, useCompanyName = false 
+      } = requestData;
+      
+      // Generate a search ID based on the criteria that were used
+      const searchIdParts = [];
+      if (useFirstName && firstName) searchIdParts.push(firstName);
+      if (useLastName && lastName) searchIdParts.push(lastName);
+      if (useCompanyName && companyName) searchIdParts.push(companyName);
+      if (useLinkedin && linkedin) {
+        const match = linkedin.match(/linkedin\.com\/in\/([\w-]+)/i);
+        const linkedinPart = match ? match[1] : linkedin;
+        if (linkedinPart) searchIdParts.push(linkedinPart);
+      }
+      
+      const searchId = searchIdParts.join('-') || 'search';
+      const timestamp = new Date().getTime();
+      const uniqueSearchId = `${searchId}-${timestamp}`;
+      
       const errorData: {
-        firstName: string;
-        lastName: string;
-        linkedin: string;
-        companyName: string;
+        firstName?: string;
+        lastName?: string;
+        linkedin?: string;
+        companyName?: string;
+        useFirstName: boolean;
+        useLastName: boolean;
+        useLinkedin: boolean;
+        useCompanyName: boolean;
         timestamp: string;
         searchId: string;
         userId: string;
         error: string;
       } = {
-        firstName,
-        lastName,
-        linkedin,
-        companyName,
+        // Only include fields that were used in the search
+        ...(useFirstName && firstName ? { firstName } : {}),
+        ...(useLastName && lastName ? { lastName } : {}),
+        ...(useLinkedin && linkedin ? { linkedin } : {}),
+        ...(useCompanyName && companyName ? { companyName } : {}),
+        // Include search criteria flags
+        useFirstName: !!useFirstName,
+        useLastName: !!useLastName,
+        useLinkedin: !!useLinkedin,
+        useCompanyName: !!useCompanyName,
         timestamp: new Date().toISOString(),
-        searchId: `${firstName}-${lastName}-${companyName}`,
+        searchId: uniqueSearchId,
         userId,
         error: 'Error executing Athena query.'
       };
@@ -389,7 +500,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } else {
         prefix = `user-data/${userId}/find-email/`;
       }
-      const s3Key = `${prefix}${errorData.searchId}.json`;
+      const s3Key = `${prefix}${uniqueSearchId}.json`;
       
       // Initialize S3 client
       const s3Client = new S3Client({
