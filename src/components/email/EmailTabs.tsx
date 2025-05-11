@@ -3,7 +3,6 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Mail, FileSpreadsheet, Clock } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 // Import email components
@@ -19,7 +18,7 @@ export const EmailTabs: React.FC<EmailTabsProps> = ({ defaultTab = 'single' }) =
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-black dark:to-gray-900 py-8 px-4">
       <div className="container mx-auto max-w-4xl">
-        <motion.div 
+        {/* <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -30,7 +29,7 @@ export const EmailTabs: React.FC<EmailTabsProps> = ({ defaultTab = 'single' }) =
           <p className="text-sm text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
             Find verified business email addresses with our powerful tools
           </p>
-        </motion.div>
+        </motion.div> */}
 
         <Tabs defaultValue={defaultTab} className="w-full">
           <div className="flex justify-center mb-8">

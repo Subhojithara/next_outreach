@@ -21,6 +21,25 @@ async function streamToString(stream: Readable): Promise<string> {
   });
 }
 
+// Add these helper functions at the top of the file
+function normalizeCompanyName(companyName: string): string {
+  return companyName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '') // Remove special characters
+    .replace(/\s+/g, '') // Remove spaces
+    .replace(/inc$|llc$|ltd$|limited$|corporation$|corp$/, ''); // Remove common company suffixes
+}
+
+function normalizeLinkedInUrl(url: string): string {
+  // Remove protocol and www
+  url = url.replace(/^(https?:\/\/)?(www\.)?/i, '');
+  // Remove trailing slashes and query parameters
+  url = url.replace(/\/+$/, '').split('?')[0];
+  // Extract username if it's a full URL
+  const match = url.match(/linkedin\.com\/in\/([\w-]+)/i);
+  return match ? match[1] : url;
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const { userId } = await auth(); // Get user ID from Clerk
 
@@ -63,21 +82,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const whereConditions = [];
     
     if (useFirstName && firstName) {
-      whereConditions.push(`(FIRST_NAME = '${firstName}' OR FIRST_NAME LIKE '${firstName}%')`);
+      const normalizedFirstName = firstName.toLowerCase().trim();
+      whereConditions.push(`(
+        FIRST_NAME = '${normalizedFirstName}' 
+        OR FIRST_NAME LIKE '${normalizedFirstName}%'
+        OR LOWER(FIRST_NAME) = '${normalizedFirstName}'
+      )`);
     }
     
     if (useLastName && lastName) {
-      whereConditions.push(`(LAST_NAME = '${lastName}' OR LAST_NAME LIKE '${lastName}%')`);
+      const normalizedLastName = lastName.toLowerCase().trim();
+      whereConditions.push(`(
+        LAST_NAME = '${normalizedLastName}' 
+        OR LAST_NAME LIKE '${normalizedLastName}%'
+        OR LOWER(LAST_NAME) = '${normalizedLastName}'
+      )`);
     }
     
     if (useLinkedin && linkedin) {
-      whereConditions.push(`(LINKEDIN_URL = '${linkedin}' 
-             OR LINKEDIN_URL LIKE '%${linkedin}%' 
-             OR LINKEDIN_URL LIKE '%${linkedinUsername}%')`);
+      const normalizedLinkedin = normalizeLinkedInUrl(linkedin);
+      whereConditions.push(`(
+        LOWER(LINKEDIN_URL) LIKE '%${normalizedLinkedin}%'
+        OR LOWER(LINKEDIN_URL) LIKE '%linkedin.com/in/${normalizedLinkedin}%'
+      )`);
     }
     
     if (useCompanyName && companyName) {
-      whereConditions.push(`COMPANY_NAME LIKE '%${companyName}%'`);
+      const normalizedCompany = normalizeCompanyName(companyName);
+      whereConditions.push(`(
+        LOWER(COMPANY_NAME) LIKE '%${normalizedCompany}%'
+        OR LOWER(COMPANY_NAME) LIKE '%${companyName.toLowerCase()}%'
+      )`);
     }
     
     // Combine all conditions with AND
@@ -137,21 +172,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       
       // Only include criteria that were selected by the user
       if (useFirstName && firstName) {
-        fallbackConditions.push(`(FIRST_NAME = '${firstName}' OR FIRST_NAME LIKE '${firstName}%')`);
+        const normalizedFirstName = firstName.toLowerCase().trim();
+        fallbackConditions.push(`(
+          FIRST_NAME = '${normalizedFirstName}' 
+          OR FIRST_NAME LIKE '${normalizedFirstName}%'
+          OR LOWER(FIRST_NAME) = '${normalizedFirstName}'
+        )`);
       }
       
       if (useLastName && lastName) {
-        fallbackConditions.push(`(LAST_NAME = '${lastName}' OR LAST_NAME LIKE '${lastName}%')`);
+        const normalizedLastName = lastName.toLowerCase().trim();
+        fallbackConditions.push(`(
+          LAST_NAME = '${normalizedLastName}' 
+          OR LAST_NAME LIKE '${normalizedLastName}%'
+          OR LOWER(LAST_NAME) = '${normalizedLastName}'
+        )`);
       }
       
       // For fallback, we prioritize name and company if available
       if (useCompanyName && companyName) {
-        fallbackConditions.push(`COMPANY_NAME LIKE '%${companyName}%'`);
+        const normalizedCompany = normalizeCompanyName(companyName);
+        fallbackConditions.push(`(
+          LOWER(COMPANY_NAME) LIKE '%${normalizedCompany}%'
+          OR LOWER(COMPANY_NAME) LIKE '%${companyName.toLowerCase()}%'
+        )`);
       }
       
       // Only include LinkedIn as a last resort in fallback
       if (fallbackConditions.length === 0 && useLinkedin && linkedin) {
-        fallbackConditions.push(`(LINKEDIN_URL LIKE '%${linkedin}%')`);
+        const normalizedLinkedin = normalizeLinkedInUrl(linkedin);
+        fallbackConditions.push(`(
+          LOWER(LINKEDIN_URL) LIKE '%${normalizedLinkedin}%'
+          OR LOWER(LINKEDIN_URL) LIKE '%linkedin.com/in/${normalizedLinkedin}%'
+        )`);
       }
       
       // If we still have no conditions, return an error
@@ -212,12 +265,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (useCompanyName && companyName) searchCriteriaUsed.push(`- Company: ${companyName}`);
         if (useLinkedin && linkedin) searchCriteriaUsed.push(`- LinkedIn: ${linkedin}`);
         
+        const errorMessage = 'No matching email found. We searched for records matching the following criteria:\n' +
+          `${searchCriteriaUsed.join('\n')}\n\n` +
+          'Suggestions:\n' +
+          '1. Check spelling of names and company\n' +
+          '2. Try using the full LinkedIn URL\n' +
+          '3. Try variations of the company name (e.g., "Acme" instead of "Acme Inc")\n' +
+          '4. Try searching with fewer criteria to broaden results';
+        
         return { 
           email: null,
           personalEmails: null,
-          errorMessage: 'No matching email found. We searched for records matching the following criteria:\n' +
-                      `${searchCriteriaUsed.join('\n')}\n` +
-                      'Please verify your information and try again with different variations or try using different search criteria.'
+          errorMessage
         };
       }
       
